@@ -231,6 +231,80 @@ The Chat SDK bridge automatically starts a shared webhook server on port 3000 (c
 
 For local development without a public URL, use a tunnel (e.g., `ngrok http 3000`) and update the messaging endpoint in Azure Bot Configuration.
 
+## Multi-bot setup (advanced)
+
+A single NanoClaw host can serve **multiple Teams bot identities** — distinct Azure AD app registrations, each with its own name, icon, and messaging endpoint. Each bot becomes its own registered channel under a suffixed `channelType` and serves on a per-bot webhook URL.
+
+Use this when you need:
+- One host running N separately-branded Teams bots (multi-tenant deployments, multi-team installs, brand separation).
+- Routing the same Teams conversation through different bots without identity collision.
+
+### Env-var convention
+
+Each bot's credentials are namespaced with a suffix. The bare `TEAMS_APP_*` variables (no suffix) still work and register under `channelType: 'teams'` — that's bot #1 for backwards compatibility. Additional bots add a suffix segment:
+
+```bash
+# Bot #1 (bare — registers as channelType 'teams', webhook /webhook/teams)
+TEAMS_APP_ID=bare-bot-app-id
+TEAMS_APP_PASSWORD=bare-bot-secret
+TEAMS_APP_TYPE=MultiTenant
+TEAMS_APP_TENANT_ID=...   # for SingleTenant only
+
+# Bot #2 (suffix ALPHA — registers as channelType 'teams-alpha', webhook /webhook/teams-alpha)
+TEAMS_ALPHA_APP_ID=alpha-bot-app-id
+TEAMS_ALPHA_APP_PASSWORD=alpha-bot-secret
+TEAMS_ALPHA_APP_TYPE=MultiTenant
+
+# Bot #3 (suffix BETA — registers as channelType 'teams-beta', webhook /webhook/teams-beta)
+TEAMS_BETA_APP_ID=beta-bot-app-id
+TEAMS_BETA_APP_PASSWORD=beta-bot-secret
+TEAMS_BETA_APP_TYPE=MultiTenant
+```
+
+Rules:
+- Suffix is uppercase by convention in the env-var key; the adapter lowercases it for the `channelType` (so `TEAMS_ALPHA_*` becomes `teams-alpha`).
+- Suffixes can contain underscores (`TEAMS_MY_BOT_APP_*` → `teams-my_bot`).
+- A bot with `APP_TYPE=SingleTenant` must also have `APP_TENANT_ID`; without it, that bot is skipped with a warning.
+- Sets missing `APP_ID` or `APP_PASSWORD` are skipped with a warning — the host won't refuse to boot.
+
+### Per-bot Azure setup
+
+Each Teams bot needs its **own Azure resources** — there's no shortcut around this. For every additional bot, repeat the steps in [Credentials](#credentials) above (sections 1–7) with a fresh App Registration, Client Secret, Azure Bot, manifest, and sideload. Concretely, for each bot:
+
+1. New Azure AD App Registration (its own App ID, Tenant ID, secret).
+2. New Azure Bot resource with **messaging endpoint** pointed at `https://your-domain/webhook/teams-<suffix-lower>` (or `/webhook/teams` for the bare bot).
+3. Teams channel enabled on the bot.
+4. New Teams app manifest with that bot's App ID and a distinct app name + icons. Sideload separately so it appears as a distinct app in Teams.
+
+If you're using `/setup` for the Azure portal walkthrough on an additional bot, **be careful**: the current setup flow writes back to bare `TEAMS_APP_*` env vars and would overwrite bot #1's credentials. Either run setup only for bot #1 (the bare set) and walk the Azure portal manually for additional bots, or interrupt setup before the env-write step and add the suffixed vars to `.env` yourself.
+
+### Restart and verify
+
+After updating `.env` with the new bot's env vars:
+
+```bash
+# Sync to container env
+mkdir -p data/env && cp .env data/env/env
+
+# Restart the host so module-load picks up the new bot
+# (macOS)
+launchctl kickstart -k gui/$(id -u)/com.nanoclaw
+# (Linux)
+systemctl --user restart nanoclaw
+```
+
+The host log at startup should show one `Webhook adapter registered` line per bot, e.g.:
+
+```
+Webhook adapter registered { adapter: 'teams', path: '/webhook/teams' }
+Webhook adapter registered { adapter: 'teams', path: '/webhook/teams-alpha' }
+Webhook adapter registered { adapter: 'teams', path: '/webhook/teams-beta' }
+```
+
+(The `adapter` value is the Chat SDK adapter's internal name and stays `'teams'` for all instances; the `path` is the per-bot routing URL.)
+
+Wire each bot to an agent via `/manage-channels` — the channel types `teams`, `teams-alpha`, `teams-beta` appear as separate channels in the wiring flow. Each bot creates its own user records, role entries, and DM cache: granting Alice admin via bot Alpha doesn't grant her admin via bot Beta. Grant roles explicitly per bot.
+
 ## Next Steps
 
 If you're in the middle of `/setup`, return to the setup flow now.
@@ -239,10 +313,10 @@ Otherwise, run `/manage-channels` to wire this channel to an agent group.
 
 ## Channel Info
 
-- **type**: `teams`
+- **type**: `teams` (bare) or `teams-<suffix>` (multi-bot — see [Multi-bot setup](#multi-bot-setup-advanced) above)
 - **terminology**: Teams has "teams" containing "channels." The bot can also receive DMs (personal scope) and group chat messages. Channels support threaded replies.
 - **platform-id-format**: `teams:{base64-encoded-conversation-id}:{base64-encoded-service-url}` — auto-generated by the adapter, not human-readable. Use the auto-created messaging group ID for wiring.
 - **how-to-find-id**: Send a message to the bot in the channel. NanoClaw auto-creates a messaging group and logs the platform ID. Use that messaging group ID for wiring.
 - **supports-threads**: yes (channels only; DMs and group chats are flat)
 - **typical-use**: Team collaboration with the bot in channels; personal assistant via DMs
-- **default-isolation**: Separate agent group per team. DMs can share an agent group with your main channel for unified personal memory.
+- **default-isolation**: Separate agent group per team. DMs can share an agent group with your main channel for unified personal memory. Multi-bot installs typically use a separate agent group per bot.
