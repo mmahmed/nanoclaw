@@ -90,7 +90,11 @@ function extractAndUpsertUser(event: InboundEvent): string | null {
   const rawHandle = senderIdField ?? senderField ?? authorUserId;
   if (!rawHandle) return null;
 
-  const userId = rawHandle.includes(':') ? rawHandle : `${event.channelType}:${rawHandle}`;
+  // Namespace the handle as `<channel>:<handle>` unless it's already namespaced
+  // for this channel. `includes(':')` is wrong: Teams Bot Framework user ids
+  // like `29:1abc...` natively contain a colon, so that check would skip the
+  // prefix and produce `29:1abc...` instead of `teams:29:1abc...`.
+  const userId = rawHandle.startsWith(`${event.channelType}:`) ? rawHandle : `${event.channelType}:${rawHandle}`;
   if (!getUser(userId)) {
     upsertUser({
       id: userId,
@@ -227,11 +231,11 @@ async function handleSenderApprovalResponse(payload: ResponsePayload): Promise<b
   if (!row) return false;
 
   // payload.userId is the raw platform userId (e.g. "6037840640"); namespace it
-  // with the channel type so it matches users(id) format. Some platforms
-  // (e.g. Teams "29:xxx") already include a colon — mirror resolveOrCreateUser
-  // logic and only prefix when the raw id has no colon.
+  // with the channel type so it matches users(id) format. Teams ids like
+  // "29:xxx" natively contain a colon, so we can't use `includes(':')` as the
+  // "already namespaced" check — match by channel-type prefix instead.
   const clickerId = payload.userId
-    ? payload.userId.includes(':')
+    ? payload.userId.startsWith(`${payload.channelType}:`)
       ? payload.userId
       : `${payload.channelType}:${payload.userId}`
     : null;
@@ -312,7 +316,7 @@ async function handleChannelApprovalResponse(payload: ResponsePayload): Promise<
   if (!row) return false;
 
   const clickerId = payload.userId
-    ? payload.userId.includes(':')
+    ? payload.userId.startsWith(`${payload.channelType}:`)
       ? payload.userId
       : `${payload.channelType}:${payload.userId}`
     : null;
@@ -354,7 +358,7 @@ async function handleChannelApprovalResponse(payload: ResponsePayload): Promise<
     if (!adapter) return true;
 
     const agentGroups = getAllAgentGroups();
-    const options = buildAgentSelectionOptions(agentGroups);
+    const options = buildAgentSelectionOptions(agentGroups, approverId);
     const title = '📋 Choose an agent';
     updatePendingChannelApprovalCard(row.messaging_group_id, title, JSON.stringify(options));
 
@@ -436,6 +440,14 @@ async function handleChannelApprovalResponse(payload: ResponsePayload): Promise<
         targetAgentGroupId,
       });
       deletePendingChannelApproval(row.messaging_group_id);
+      return true;
+    }
+    if (!hasAdminPrivilege(approverId, targetAgentGroupId)) {
+      log.warn('Channel registration: target agent group rejected for unauthorized approver', {
+        messagingGroupId: row.messaging_group_id,
+        targetAgentGroupId,
+        approverId,
+      });
       return true;
     }
   } else {
