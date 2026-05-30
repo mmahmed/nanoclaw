@@ -1,0 +1,45 @@
+# release/teams-base-v1 — integration manifest
+#
+# This branch = nanoclaw + a Microsoft Teams channel adapter + selected
+# upstream fixes, maintained as a pinned downstream ref. Every command used to
+# build the branch is listed below, in order, so we can see what's been
+# integrated without spelunking git log. Append one entry per integration step.
+#
+# Remotes:  origin = mmahmed/nanoclaw    upstream = nanocoai/nanoclaw
+
+1. branched from upstream/main @ 24922593   "docs: update token count …" (2026-05-25)
+
+2. git merge feat/add-teams
+   → eb1e5a8  feat(channels): add Microsoft Teams adapter
+
+3. git merge fix/user-id-channel-prefix
+   → d2384dc  (fca8aa5 fix: namespace user IDs by channel-type prefix, not bare colon)
+
+4. git merge feat/chat-sdk-bridge-channel-type-override
+   → 61bcdf5  (a18bd0c feat(chat-sdk-bridge): add channelType override + webhook routingPath)
+
+5. git cherry-pick 074d8115884542f8d575499e38f7d92aec4589dd
+   → 3c866e3  feat(teams): support multiple bot instances behind unique channel types
+
+6. git cherry-pick 26fb6c9b1da140fa1a1a1fb913b7ae64b9813a3f   # from feat/mcp-disabled-tools
+   → af3958b  feat: per-server disabledTools in McpServerConfig          [origin tip before 2026-05-30]
+
+# ── 2026-05-30: OneCLI agent-id fix + upstream refresh ──
+
+7. git fetch upstream pull/2543/head:pr-2543 && git merge pr-2543
+   → b0f633d  (7ff10f0 fix: prefix generated resource IDs to satisfy OneCLI identifier rules)
+   # PR #2543 / issue #2386 — ncl groups create now mints ag-/mg-/mga- prefixed IDs,
+   # so OneCLI (identifiers must start with a letter) stops 400-ing on agent create.
+
+8. (local commit) fix(cli): cascade-delete unregistered_senders on agent group delete
+   → d16a86e
+   # The one dependent table our customOperations.delete cascade (#2525) missed.
+
+9. git merge upstream/main
+   → c4c1801  refresh to v2.0.71 (claude-code 2.1.154, claude-agent-sdk 0.3.154)
+
+# ── Evaluated, intentionally NOT merged ──
+# PR #2540 (fix/ncl-groups-cascade-and-id-prefix): its idPrefix duplicates #2543,
+# and its deleteAgentGroup cascade REGRESSES our customOperations.delete handler
+# (#2525) — misses agent_destinations reverse-refs, pending_questions ordering, and
+# full pending_approvals removal. We took only its one missing table (step 8) instead.
