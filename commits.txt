@@ -1,0 +1,52 @@
+# release/v2-teams-base — integration manifest
+#
+# This branch = nanoclaw v2.1.54 + a Microsoft Teams channel adapter, maintained
+# as a pinned downstream ref. Every command used to build the branch is listed
+# below, in order, so we can see what's been integrated without spelunking git
+# log. Append one entry per integration step.
+#
+# Remotes:  origin = mmahmed/nanoclaw    upstream = nanocoai/nanoclaw
+#
+# Supersedes release/teams-base-v1, which was built on v2.0.64 and cannot be
+# fast-forwarded onto v2.1.x — the Teams adapter moved to the `channels` branch
+# and the Chat SDK pin changed. That branch is retained, not deleted.
+#
+# Branch layout:
+#   main                  tracks upstream/main, kept byte-identical — never commit here
+#   feat/v2-add-teams     the Teams adapter work, alone
+#   release/v2-teams-base main + feat/v2-add-teams  ← this branch, what the install runs
+
+1. branched from upstream/main @ 358f1a81   "Merge pull request #3187 from
+   dim0627/fix/disallow-builtin-sendmessage"   (v2.1.54, 2026-08-06)
+
+2. git merge feat/v2-add-teams
+   → 20eb894f  chore: restore Teams adapter after upstream sync
+   # Three parts, all of which the `channels` branch is canonical for:
+   #   src/channels/teams.ts                    — verified IDENTICAL to upstream/channels
+   #   src/channels/teams-registration.test.ts  — asserts the registry contains `teams`
+   #   src/channels/index.ts                    — one line: import './teams.js';
+   #   package.json                             — @chat-adapter/teams pinned 4.29.0
+   #
+   # 4.29.0 is not optional: CHANGELOG marks the Chat SDK pin [BREAKING] because
+   # the adapter's ChatInstance type must match the bridge's, or
+   # createChatSdkBridge(...) fails to typecheck.
+
+# ── Notes for the next integration ──
+#
+# Upgrades MUST go through /update-nanoclaw, not `git pull` or `git merge`.
+# v2.1.x added a startup tripwire: the host records the version it reached via a
+# supported path in data/upgrade-state.json and refuses to start when that record
+# does not match the running code. A raw merge trips it — see
+# docs/upgrade-recovery.md. Clearing the marker by hand skips the container
+# rebuild, which is what the tripwire is actually protecting.
+#
+# Not carried over from release/teams-base-v1, and why:
+#   feat/teams-multi-instance (074d8115)
+#     Upstream shipped its own multi-instance support (#2733): ChatSdkBridgeConfig
+#     gained an `instance` field that namespaces state keys and the webhook route
+#     while keeping channelType = the platform name. Our version overrode
+#     channelType instead, which upstream explicitly declined — user identity,
+#     formatting and container config are meant to stay keyed on the platform.
+#   feat/mcp-disabled-tools (26fb6c9b)
+#     McpServerConfig is still {command,args,env} upstream, so this has no
+#     equivalent and would need rebasing onto the current shape.
