@@ -57,7 +57,19 @@
 # docs/upgrade-recovery.md. Clearing the marker by hand skips the container
 # rebuild, which is what the tripwire is actually protecting.
 #
-# Evaluated against release/teams-base-v1's carries, and NOT taken:
+# Every release/teams-base-v1 carry was re-examined against this base
+# (`git cherry -v upstream/main release/teams-base-v1`, then checked semantically
+# — patch-id equality cannot see an equivalent upstream implementation).
+#
+# Resolved by upstream, nothing to do:
+#   feat/add-teams (eb1e5a8)      → channels branch + .claude/skills/add-teams
+#   PR #2543 (7ff10f0)            → merged; groups.ts mints ag-/mg-/mga- ids
+#   feat/chat-sdk-bridge-channel-type-override (a18bd0c)
+#     The webhook-routing half is covered by upstream's /webhook/<instance>.
+#     The channelType-override half upstream explicitly declined. This base
+#     typechecks and passes teams-registration.test.ts without it.
+#
+# Evaluated and deliberately NOT taken:
 #   feat/teams-multi-instance (074d8115)
 #     Upstream shipped its own multi-instance support (#2733): ChatSdkBridgeConfig
 #     gained an `instance` field that namespaces state keys and the webhook route
@@ -65,10 +77,30 @@
 #     channelType instead, which upstream explicitly declined — user identity,
 #     formatting and container config are meant to stay keyed on the platform.
 #   feat/mcp-disabled-tools (26fb6c9b)
-#     Needs rebasing onto the current McpServerConfig, which upstream 99cc8662
-#     has since reworked to admit remote Streamable HTTP servers alongside stdio.
-#     Note eva-ve's agents/eva/mcp.json still sets `disabledTools`; on this line
-#     that key is inert, so the MS365 tool suppression lapses silently.
+#     Would need rebasing onto the current McpServerConfig, which upstream
+#     99cc8662 reworked to admit remote Streamable HTTP servers alongside stdio.
+#     Superseded regardless: @softeria/ms-365-mcp-server filters its own tools
+#     via --enabled-tools <regex> / --preset. Filtering at the server is strictly
+#     better than in the substrate — the tools are never registered, so they
+#     never reach the model and never cost context. eva-ve replaces its inert
+#     `disabledTools` key with that flag instead.
+#   fix/user-id-channel-prefix (fca8aa5)
+#     Replaced `includes(':')` with `startsWith(<channel>:)` when deciding whether
+#     a handle is already namespaced — Teams ids like "29:1abc" contain a colon
+#     natively. Not taken: upstream has since adopted the same startsWith logic
+#     in src/platform-id.ts (namespacedPlatformId), and the bridge normalizes
+#     sender ids before src/modules/permissions sees them. Verify empirically —
+#     if `users` rows ever appear keyed "29:…" rather than "teams:29:…", revisit.
+#   fix(cli) cascade-delete unregistered_senders (d16a86e)
+#     Still absent here: groups-delete cascades eleven tables but not
+#     unregistered_senders, which has no FK either. Impact is low — the table is
+#     keyed (channel_type, platform_id), not by group, and the upsert rewrites
+#     agent_group_id on that sender's next message, so orphans self-heal. Not
+#     taken and not filed upstream: the change originated in PR #2540
+#     (abarbaccia), still OPEN, so tracking main picks it up if it merges.
+#     Four lines to re-add if it ever matters.
+#
+# Net: this line is upstream + the Teams adapter. No other carries.
 #
 # Not yet carried, pending rebase onto this base:
 #   feat/per-conversation-memory (745ee7b4, parented on v2.0.71)
