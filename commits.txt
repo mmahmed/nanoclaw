@@ -22,3 +22,58 @@
 #
 # Supersedes release/v2-teams-base (upstream 358f1a81, v2.1.54) and
 # release/teams-base-v1 (v2.0.71). Both are retained, not deleted.
+
+1. branched from main @ 639577c3   "feat: add Tavily MCP tool skill (#3190)"
+   (v2.1.54, 2026-08-11)
+
+2. git merge feat/v2-add-teams                                       (2026-08-13)
+   → the Microsoft Teams channel adapter, restored from upstream's `channels`
+     branch. Channels are not in upstream trunk; `.claude/skills/add-teams/`
+     is the sanctioned installer and the `channels` branch is canonical.
+   # Five files, purely additive — nothing in core is modified:
+   #   src/channels/teams.ts                    — the adapter, identical to upstream/channels
+   #   src/channels/teams-registration.test.ts  — asserts the registry contains `teams`
+   #   src/channels/index.ts                    — one line: import './teams.js';
+   #   package.json / pnpm-lock.yaml            — @chat-adapter/teams pinned 4.29.0
+   #
+   # 4.29.0 is not optional: the CHANGELOG marks the Chat SDK pin [BREAKING]
+   # because the adapter's ChatInstance type must match the bridge's, or
+   # createChatSdkBridge(...) fails to typecheck.
+   #
+   # Verified on this base: pnpm install --frozen-lockfile clean,
+   # tsc --noEmit clean, vitest 105 files / 1320 tests pass.
+   #
+   # Follow-up, not blocking: upstream 6e7b91ed added
+   # src/channels/question-render-registry.ts. teams.ts compiles and its
+   # registration test passes without registering a renderer, so it inherits
+   # the default — decide whether Teams should register its own.
+
+# ── Notes for the next integration ──
+#
+# Upgrades MUST go through /update-nanoclaw, not `git pull` or `git merge`.
+# v2.1.x added a startup tripwire: the host records the version it reached via a
+# supported path in data/upgrade-state.json and refuses to start when that record
+# does not match the running code. A raw merge trips it — see
+# docs/upgrade-recovery.md. Clearing the marker by hand skips the container
+# rebuild, which is what the tripwire is actually protecting.
+#
+# Evaluated against release/teams-base-v1's carries, and NOT taken:
+#   feat/teams-multi-instance (074d8115)
+#     Upstream shipped its own multi-instance support (#2733): ChatSdkBridgeConfig
+#     gained an `instance` field that namespaces state keys and the webhook route
+#     while keeping channelType = the platform name. Our version overrode
+#     channelType instead, which upstream explicitly declined — user identity,
+#     formatting and container config are meant to stay keyed on the platform.
+#   feat/mcp-disabled-tools (26fb6c9b)
+#     Needs rebasing onto the current McpServerConfig, which upstream 99cc8662
+#     has since reworked to admit remote Streamable HTTP servers alongside stdio.
+#     Note eva-ve's agents/eva/mcp.json still sets `disabledTools`; on this line
+#     that key is inert, so the MS365 tool suppression lapses silently.
+#
+# Not yet carried, pending rebase onto this base:
+#   feat/per-conversation-memory (745ee7b4, parented on v2.0.71)
+#     Scopes durable memory to the conversation instead of the agent group.
+#     Fixes a confirmed DM↔channel memory leak that stock NanoClaw still has —
+#     upstream's memory subsystem writes to the group-scoped /workspace/agent.
+#     Expect a rewrite, not a rebase: container-runner.ts, session-manager.ts,
+#     group-init.ts and claude-md-compose.ts all moved under it.
