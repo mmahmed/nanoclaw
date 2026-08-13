@@ -2,7 +2,7 @@
 #
 # What this file is for
 # ─────────────────────
-# This branch is the NanoClaw ref that eva-ve pins and runs. It is not a fork in
+# This branch is the NanoClaw ref the downstream install pins and runs. Not a fork in
 # the "we maintain a divergent copy" sense — it is upstream `main` plus a small,
 # deliberately-chosen set of `feat/*` branches, each of which stands alone and
 # stays PR-able upstream.
@@ -48,6 +48,35 @@
    # registration test passes without registering a renderer, so it inherits
    # the default — decide whether Teams should register its own.
 
+3. git merge --no-ff feat/v3-teams-multi-instance                    (2026-08-13)
+   → one Teams adapter instance per credential block in .env, so an install
+     fronting several assistants can run one bot per assistant.
+   # Three files: src/channels/teams.ts, src/env.ts, and the registration test.
+   #
+   # Why this is not the old feat/teams-multi-instance (074d8115). That branch
+   # overrode `channelType` per bot, which fragments user identity — upstream
+   # said so and shipped the alternative in #2733: an `instance` dimension that
+   # drives the registry key, the webhook route and the Chat SDK state
+   # namespace while channelType stays the platform name. This branch uses that
+   # dimension. 074d8115 is retained as the historical record; do not revive it.
+   #
+   # #2733 deliberately shipped the dimension WITHOUT per-channel registration
+   # ("that becomes a channel skill that just registers two more adapters"), so
+   # there is no upstream pattern to copy: whatsapp-cloud names one static
+   # instance to avoid colliding with the native whatsapp adapter, and
+   # add-github / add-linear only gained the `instance` column in their wiring
+   # INSERTs. Env-driven N-instance discovery is new here, and is the piece
+   # worth offering upstream.
+   #
+   # Purely additive: the default `teams` instance still registers
+   # unconditionally, and deliberately passes no `instance` so it stays on the
+   # legacy unprefixed Chat SDK state keyspace. A named instance namespaces its
+   # state — installs migrating from a channelType-override scheme must
+   # re-prefix their existing chat_sdk_* rows or orphan them.
+   #
+   # Verified on this base: tsc --noEmit clean, vitest 105 files /
+   # 1326 tests pass (6 new, covering discovery and the collision guard).
+
 # ── Notes for the next integration ──
 #
 # Upgrades MUST go through /update-nanoclaw, not `git pull` or `git merge`.
@@ -80,10 +109,18 @@
 #     Would need rebasing onto the current McpServerConfig, which upstream
 #     99cc8662 reworked to admit remote Streamable HTTP servers alongside stdio.
 #     Superseded regardless: @softeria/ms-365-mcp-server filters its own tools
-#     via --enabled-tools <regex> / --preset. Filtering at the server is strictly
-#     better than in the substrate — the tools are never registered, so they
-#     never reach the model and never cost context. eva-ve replaces its inert
-#     `disabledTools` key with that flag instead.
+#     via --enabled-tools <regex> / --preset. Filtering at the server is better
+#     than in the substrate where it reaches — the tools are never registered,
+#     so they never reach the model and never cost context.
+#     CORRECTION (2026-08-13, measured): --enabled-tools reaches only the Graph
+#     and discovery tools. registerAuthTools() is called without the filter
+#     whenever the server runs over stdio, so login/logout/verify-login/
+#     list-accounts/select-account/remove-account always register; the
+#     --enable-auth-tools flag is opt-IN for HTTP mode with no opt-out. Same in
+#     0.113.0 and 0.141.0. The downstream install denies those four at the agent
+#     instead, via `permissions.deny` in the group's .claude-shared/settings.json
+#     — which the SDK honours even under permissionMode 'bypassPermissions'.
+#     Still no substrate change needed, so this carry stays declined.
 #   fix/user-id-channel-prefix (fca8aa5)
 #     Replaced `includes(':')` with `startsWith(<channel>:)` when deciding whether
 #     a handle is already namespaced — Teams ids like "29:1abc" contain a colon
