@@ -1,0 +1,24 @@
+# release/v3-teams-base — integration manifest
+#
+# What this file is for
+# ─────────────────────
+# This branch is the NanoClaw ref that eva-ve pins and runs. It is not a fork in
+# the "we maintain a divergent copy" sense — it is upstream `main` plus a small,
+# deliberately-chosen set of `feat/*` branches, each of which stands alone and
+# stays PR-able upstream.
+#
+# Because that set is chosen rather than inherited, `git log` alone cannot tell
+# you *why* something is here. This file can. Every integration step gets one
+# numbered entry recording the exact command run, the resulting commit, and the
+# reasoning — including the things we evaluated and deliberately did NOT take.
+# Read it before changing this branch; append to it after.
+#
+# Remotes:  origin = mmahmed/nanoclaw    upstream = nanocoai/nanoclaw
+#
+# Branch layout:
+#   main                   tracks upstream/main, kept byte-identical — never commit here
+#   feat/<improvement>     one improvement, alone, so it stays PR-able upstream
+#   release/v3-teams-base  main + the chosen feat/* branches  ← this branch, what the install runs
+#
+# Supersedes release/v2-teams-base (upstream 358f1a81, v2.1.54) and
+# release/teams-base-v1 (v2.0.71). Both are retained, not deleted.
